@@ -261,8 +261,6 @@ char __cdecl HookedCustomScenarioBuild() {
         g_browser.Close();
     }
 
-    g_browser.ObserveMapsRoot();
-
     static bool announced = false;
     if (!announced) {
         announced = true;

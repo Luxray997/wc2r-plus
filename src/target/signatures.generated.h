@@ -2755,6 +2755,16 @@ const RelocSlot kRelResumeCommandHandler[] = {
     {81, 0x00840d78},
 };
 
+const uint8_t kSigFsCodePage[] = {
+    0xe8, 0xb6, 0x03, 0x02, 0x00, 0xb9, 0xe9, 0xfd,
+    0x00, 0x00, 0x3b, 0xc1, 0x75, 0x03, 0x8b, 0xc1,
+    0xc3, 0xff, 0x15, 0x34, 0x43, 0x83, 0x00, 0xf7,
+    0xd8, 0x1b, 0xc0, 0x40, 0xc3,
+};
+const RelocSlot kRelFsCodePage[] = {
+    {19, 0x00834334},
+};
+
 const Signature kSignatures[] = {
     {"TransitionGameState", 0x004c48e0, kSigTransitionGameState, sizeof(kSigTransitionGameState), kRelTransitionGameState,
      sizeof(kRelTransitionGameState) / sizeof(RelocSlot)},
@@ -3103,4 +3113,6 @@ const Signature kSignatures[] = {
      sizeof(kRelPauseCommandHandler) / sizeof(RelocSlot)},
     {"resume command handler", 0x004d8c20, kSigResumeCommandHandler, sizeof(kSigResumeCommandHandler), kRelResumeCommandHandler,
      sizeof(kRelResumeCommandHandler) / sizeof(RelocSlot)},
+    {"fs code page", 0x007e7aca, kSigFsCodePage, sizeof(kSigFsCodePage), kRelFsCodePage,
+     sizeof(kRelFsCodePage) / sizeof(RelocSlot)},
 };

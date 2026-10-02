@@ -229,7 +229,9 @@ Everything but downloaded maps lives in one folder:
     logs\        wc2r-plus.log (moved to wc2r-plus.1.log at startup once it passes 5 MB; at most
                  20 MB is written per game launch, after which logging stops until the next)
                  chat-<date>_<time>.log, one per game launch, only if "Log Chat to Disk" is on (off by default)
-    resources\   caches the mod rebuilds if deleted (a map-hash index, a map search index)
+    resources\   map_index.txt, a cache the mod rebuilds if deleted: for each file under the
+                 game's Maps folder, its path, size, modification time, and, for a map, its
+                 player count, size, description and SHA-256
 ```
 
 `wc2r-plus.log` is a diagnostic log, and it records what happened in the lobbies you joined: other

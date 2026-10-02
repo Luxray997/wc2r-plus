@@ -23,6 +23,8 @@ public:
 
     void SetHidden(const char* key, bool hidden = true);
 
+    void SetActiveWhen(const char* key, const char* boolKey);
+
     void SetOptions(const char* key, std::vector<std::string> options);
 
     bool ReloadIfChanged();

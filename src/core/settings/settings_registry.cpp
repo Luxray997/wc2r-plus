@@ -198,6 +198,11 @@ void SettingsRegistry::SetHidden(int index, bool hidden) {
     records_[index].def.hidden = hidden;
 }
 
+void SettingsRegistry::SetActiveWhen(int index, const char* boolKey) {
+    if (index < 0 || index >= (int)records_.size() || !boolKey) return;
+    records_[index].def.activeWhen = boolKey;
+}
+
 void SettingsRegistry::SetOptions(int index, std::vector<std::string> options) {
     if (index < 0 || index >= (int)records_.size() || options.empty()) return;
     SettingDef& d = records_[index].def;

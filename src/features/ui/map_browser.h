@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "features/ui/map_search_cache.h"
+#include "core/map_index.h"
 #include "features/ui/screen_kit.h"
 
 namespace ui {
@@ -56,13 +56,16 @@ public:
 
     bool PreviewBox(Rect* box, const char** path, unsigned short* mapId) const;
 
-    void ObserveMapsRoot();
-
 private:
+    enum class View { BuiltIn, Progress, Search, Browse };
+
     struct Choice {
         bool valid = false;
         bool builtIn = false;
-        std::string name, path, desc, relDir;
+        std::string name, path, desc;
+        std::string folder;
+        bool folderKnown = false;
+        bool folderLookedUp = false;
         unsigned players = 0, dim = 0, index = 0;
     };
 
@@ -72,45 +75,52 @@ private:
         unsigned players = 0, dim = 0, index = 0;
     };
 
+    View CurrentView() const;
     std::vector<LiveEntry> LiveEntries() const;
     bool BuiltInMode() const;
     bool Searching() const { return search_[0] != '\0'; }
     bool HasTypeDropdown() const { return b_.modeCurrent != nullptr; }
 
-    void RefreshFromCurrentFolder();
+    void SetGameFolder(const std::string& gamePath);
+    bool GameFolderPath(const std::string& folder, std::string* gamePath) const;
     void ReloadMaps();
-    void SetFolder(const std::string& rel);
-    void DescendInto(const std::string& folder);
-    void GoUp();
-    bool AtRoot() const;
     void OnModeChanged();
-    void InvalidateIndex();
 
-    void IndexDir(const std::string& rel, int depth);
-    void BuildSearchIndex();
+    void DescendInto(const std::string& child);
+    void GoUp();
+    bool AtRoot() const { return folder_.empty(); }
+
+    void RefreshBrowse();
+    void RefreshSearch();
 
     void ChoiceFromLive(const LiveEntry& le);
-    void ChoiceFromIndex(const IndexedMap& m);
+    void ChoiceFromMap(const map_index::MapInfo& m);
     uint8_t* ResolveChoiceEntry();
 
-    std::string DirectoryText();
+    std::string DirectoryText() const;
     void DrawRowIcon(void* ctx, float rowTopLayout, bool folder);
     bool ListRow(void* ctx, const char* label, bool folder);
     void DrawList(void* ctx, const Rect& r);
+    void DrawIndexProgress(void* ctx, const Rect& r);
 
     MapListBinding b_;
     Choice choice_;
-    std::vector<IndexedMap> index_;
-
-    std::vector<std::string> walkedDirs_;
-    std::string mapsRoot_;
-    Rect previewBox_{};
     char search_[96] = {0};
     bool open_ = false;
-    bool indexBuilt_ = false;
 
-    bool skipCacheOnce_ = false;
-    bool mapsRootKnown_ = false;
+    std::string folder_;
+    bool folderSeeded_ = false;
+
+    unsigned browseGen_ = ~0u;
+    std::string browseFolder_;
+    std::vector<std::string> browseFolders_;
+    std::vector<map_index::MapInfo> browseMaps_;
+
+    unsigned searchGen_ = ~0u;
+    std::string searchQuery_;
+    std::vector<map_index::MapInfo> results_;
+
+    Rect previewBox_{};
 };
 
 }  // namespace ui

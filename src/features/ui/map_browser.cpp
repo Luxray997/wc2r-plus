@@ -9,8 +9,8 @@
 
 #include "core/log.h"
 #include "features/map_download/game_map.h"
-#include "features/map_download/map_index.h"
 #include "features/map_preview.h"
+#include "target/addresses.h"
 
 namespace ui {
 namespace {
@@ -19,8 +19,10 @@ constexpr float kBrowserWFraction = 0.80f;
 constexpr float kBrowserHFraction = 0.88f;
 constexpr float kBrowserLeftFraction = 0.56f;
 
-constexpr int kMaxIndexDepth = 8;
-constexpr size_t kMaxIndexedMaps = 4000;
+constexpr unsigned int kBarTrack = Rgba(0, 0, 0, 160);
+constexpr unsigned int kBarFill = Rgba(240, 206, 74, 255);
+constexpr float kBarH = 24.0f;
+constexpr float kBarWFraction = 0.7f;
 
 constexpr float kIconSize = 46.0f;
 
@@ -52,11 +54,6 @@ bool PassesSizeFilter(const SizeFilter& f, unsigned dim) {
     return strcmp(buf, f.wanted) == 0;
 }
 
-std::string LastComponent(const std::string& path) {
-    const size_t slash = path.find_last_of('\\');
-    return slash == std::string::npos ? path : path.substr(slash + 1);
-}
-
 }  // namespace
 
 std::vector<MapBrowser::LiveEntry> MapBrowser::LiveEntries() const {
@@ -83,75 +80,58 @@ bool MapBrowser::BuiltInMode() const {
     return HasTypeDropdown() && b_.mode && *b_.mode == 0;
 }
 
-void MapBrowser::RefreshFromCurrentFolder() {
+MapBrowser::View MapBrowser::CurrentView() const {
+    if (BuiltInMode()) return View::BuiltIn;
+    if (map_index::GetState() != map_index::State::Ready) return View::Progress;
+    return Searching() ? View::Search : View::Browse;
+}
+
+void MapBrowser::SetGameFolder(const std::string& gamePath) {
+    StrSet(b_.relPath, gamePath.c_str());
+
+    if (b_.folderCurrent) {
+        const size_t slash = gamePath.find_last_of('\\');
+        StrSet(b_.folderCurrent,
+               (slash == std::string::npos ? gamePath : gamePath.substr(slash + 1)).c_str());
+    }
     if (b_.refreshFromFolder) b_.refreshFromFolder(b_.listBegin, b_.folderList, b_.relPath);
 }
 
-void MapBrowser::ObserveMapsRoot() {
-    const std::string rel = GameStr(b_.relPath);
-    if (rel.empty()) return;
-    if (!mapsRootKnown_ || rel.size() < mapsRoot_.size()) {
-        mapsRoot_ = rel;
-        mapsRootKnown_ = true;
+bool MapBrowser::GameFolderPath(const std::string& folder, std::string* gamePath) const {
+    std::wstring wide = map_download::game_map::MapsRoot();
+    if (wide.empty()) return false;
+    if (!folder.empty()) {
+        std::wstring rel;
+        if (!map_index::FromGamePath(folder, &rel)) return false;
+        wide += L'\\';
+        wide += rel;
     }
-}
-
-bool MapBrowser::AtRoot() const {
-    if (!mapsRootKnown_) return true;
-    return GameStr(b_.relPath).size() <= mapsRoot_.size();
-}
-
-void MapBrowser::InvalidateIndex() {
-    index_.clear();
-    indexBuilt_ = false;
+    const unsigned cp = game::kStdFsCodePage.Get()();
+    BOOL lossy = FALSE;
+    const bool utf8 = cp == CP_UTF8;
+    const DWORD flags = utf8 ? 0 : WC_NO_BEST_FIT_CHARS;
+    BOOL* lossyOut = utf8 ? nullptr : &lossy;
+    const int n = WideCharToMultiByte(cp, flags, wide.c_str(), static_cast<int>(wide.size()), nullptr,
+                                      0, nullptr, lossyOut);
+    if (n <= 0 || lossy) return false;
+    gamePath->assign(static_cast<size_t>(n), '\0');
+    WideCharToMultiByte(cp, flags, wide.c_str(), static_cast<int>(wide.size()), &(*gamePath)[0], n,
+                        nullptr, lossyOut);
+    return !lossy;
 }
 
 void MapBrowser::ReloadMaps() {
     const Logger log{b_.logTag};
-    if (!mapsRootKnown_) {
-
-        log.Warn("reload: the maps root has not been seen yet -- nothing was reloaded");
+    const std::wstring root = map_download::game_map::MapsRoot();
+    if (root.empty()) {
+        log.Warn("reload: the game has not published its maps root yet -- nothing was reloaded");
         return;
     }
-
     const DWORD started = GetTickCount();
-    std::wstring root;
-    if (!map_download::FromGamePath(mapsRoot_, &root)) {
-
-        log.Warn("reload: '%s' does not convert to a wide path -- the registry was NOT rescanned",
-                  mapsRoot_.c_str());
-    } else {
-        map_download::game_map::RegisterDirectory(root);
-    }
-
-    RefreshFromCurrentFolder();
-    InvalidateIndex();
-    skipCacheOnce_ = true;
-    log.Info("reload: registry rescanned from '%s', folder refreshed, search index dropped (%u ms)",
-              mapsRoot_.c_str(), static_cast<unsigned>(GetTickCount() - started));
-}
-
-void MapBrowser::SetFolder(const std::string& rel) {
-    StrSet(b_.relPath, rel.c_str());
-
-    if (b_.folderCurrent) StrSet(b_.folderCurrent, LastComponent(rel).c_str());
-    RefreshFromCurrentFolder();
-}
-
-void MapBrowser::DescendInto(const std::string& folder) {
-    std::string rel = GameStr(b_.relPath);
-    rel += '\\';
-    rel += folder;
-    SetFolder(rel);
-}
-
-void MapBrowser::GoUp() {
-    if (AtRoot()) return;
-    const std::string rel = GameStr(b_.relPath);
-    const size_t slash = rel.find_last_of('\\');
-    if (slash == std::string::npos) return;
-    const std::string up = rel.substr(0, slash);
-    SetFolder(up.size() < mapsRoot_.size() ? mapsRoot_ : up);
+    map_download::game_map::RegisterDirectory(root);
+    map_download::game_map::ReloadMapIndex();
+    log.Info("reload: game registry rescanned (%u ms), map index rebuilding",
+             static_cast<unsigned>(GetTickCount() - started));
 }
 
 void MapBrowser::OnModeChanged() {
@@ -166,93 +146,97 @@ void MapBrowser::OnModeChanged() {
         }
     }
     *b_.mode = index;
-    InvalidateIndex();
 
     if (*b_.mode == 0) {
 
         if (b_.folderCurrent) StrSet(b_.folderCurrent, "");
         if (b_.refreshBuiltIn) b_.refreshBuiltIn(b_.listBegin);
-        return;
     }
-    if (b_.folderCurrent) StrSet(b_.folderCurrent, LastComponent(GameStr(b_.relPath)).c_str());
-    RefreshFromCurrentFolder();
+
 }
 
-void MapBrowser::IndexDir(const std::string& rel, int depth) {
-    if (depth > kMaxIndexDepth || index_.size() >= kMaxIndexedMaps) return;
-
-    walkedDirs_.push_back(rel);
-    StrSet(b_.relPath, rel.c_str());
-    RefreshFromCurrentFolder();
-
-    for (const LiveEntry& le : LiveEntries()) {
-        if (index_.size() >= kMaxIndexedMaps) break;
-        IndexedMap m;
-        m.name = le.name;
-        m.path = le.path;
-        m.desc = le.desc;
-        m.relDir = rel;
-        m.players = le.players;
-        m.dim = le.dim;
-        index_.push_back(m);
-    }
-
-    const std::vector<std::string> children = FolderNames(b_.folderList, true);
-    for (const std::string& child : children) {
-        IndexDir(rel + '\\' + child, depth + 1);
-    }
+void MapBrowser::DescendInto(const std::string& child) {
+    folder_ = folder_.empty() ? child : folder_ + '\\' + child;
 }
 
-void MapBrowser::BuildSearchIndex() {
-    if (indexBuilt_ || !mapsRootKnown_) return;
+void MapBrowser::GoUp() {
+    const size_t slash = folder_.find_last_of('\\');
+    folder_ = slash == std::string::npos ? std::string() : folder_.substr(0, slash);
+}
 
-    if (!skipCacheOnce_ && map_search_cache::Load(mapsRoot_, &index_, b_.logTag)) {
-        indexBuilt_ = true;
-        return;
+void MapBrowser::RefreshBrowse() {
+    const unsigned gen = map_index::Generation();
+    if (gen == browseGen_ && folder_ == browseFolder_) return;
+    if (!map_index::FolderContents(folder_, &browseFolders_, &browseMaps_) && !folder_.empty()) {
+
+        folder_.clear();
+        map_index::FolderContents(folder_, &browseFolders_, &browseMaps_);
     }
-    skipCacheOnce_ = false;
+    browseGen_ = gen;
+    browseFolder_ = folder_;
+}
 
-    const std::string here = GameStr(b_.relPath);
-    const std::string root = mapsRoot_;
-    const DWORD started = GetTickCount();
+void MapBrowser::RefreshSearch() {
+    const unsigned gen = map_index::Generation();
+    if (gen == searchGen_ && searchQuery_ == search_) return;
+    searchQuery_ = search_;
+    map_index::Search(searchQuery_, &results_);
+    searchGen_ = gen;
+}
 
-    index_.clear();
-    walkedDirs_.clear();
-    IndexDir(root, 0);
-    indexBuilt_ = true;
+void MapBrowser::DrawIndexProgress(void* ctx, const Rect& r) {
+    const map_index::Progress p = map_index::GetProgress();
+    float fraction = 0.0f;
+    char text[96];
+    if (p.state == map_index::State::Idle) {
+        _snprintf_s(text, sizeof(text), _TRUNCATE, "Waiting for the game...");
+    } else if (p.listing) {
+        _snprintf_s(text, sizeof(text), _TRUNCATE, "Finding maps: %u", p.filesFound);
+    } else {
+        if (p.filesFound > 0) {
+            fraction = static_cast<float>(p.filesDone) / static_cast<float>(p.filesFound);
+        }
+        _snprintf_s(text, sizeof(text), _TRUNCATE, "Indexing maps: %u / %u", p.filesDone,
+                    p.filesFound);
+    }
 
-    SetFolder(here);
+    if (BeginList(ctx, r, "select_map_list")) EndList(ctx);
 
-    Logger{b_.logTag}.Info("search index built -- %u maps under '%s' in %u ms%s",
-                           (unsigned)index_.size(), root.c_str(),
-                           (unsigned)(GetTickCount() - started),
-                           index_.size() >= kMaxIndexedMaps ? " (CAPPED)" : "");
-
-    map_search_cache::Save(root, index_, walkedDirs_, b_.logTag);
+    const float barW = Fl(r.w * kBarWFraction);
+    const float barX = r.x + Fl((r.w - barW) * 0.5f);
+    const float barY = r.y + Fl(r.h * 0.5f);
+    LabelAt(ctx, Rect{r.x, barY - kRowH - kGap, r.w, kRowH}, text, kAlignCentre);
+    void* canvas = WindowCanvas(ctx);
+    if (!canvas) return;
+    FillRect(canvas, barX, barY, barW, kBarH, kBarH * 0.5f, kBarTrack);
+    if (fraction > 0.0f) {
+        FillRect(canvas, barX, barY, Fl(barW * (std::min)(fraction, 1.0f)), kBarH, kBarH * 0.5f,
+                 kBarFill);
+    }
 }
 
 void MapBrowser::ChoiceFromLive(const LiveEntry& le) {
+    choice_ = Choice{};
     choice_.valid = true;
     choice_.builtIn = BuiltInMode();
     choice_.name = le.name;
     choice_.path = le.path;
     choice_.desc = le.desc;
-    choice_.relDir = GameStr(b_.relPath);
     choice_.players = le.players;
     choice_.dim = le.dim;
     choice_.index = le.index;
 }
 
-void MapBrowser::ChoiceFromIndex(const IndexedMap& m) {
+void MapBrowser::ChoiceFromMap(const map_index::MapInfo& m) {
+    choice_ = Choice{};
     choice_.valid = true;
-    choice_.builtIn = false;
     choice_.name = m.name;
     choice_.path = m.path;
     choice_.desc = m.desc;
-    choice_.relDir = m.relDir;
+    choice_.folder = m.folder;
+    choice_.folderKnown = true;
     choice_.players = m.players;
     choice_.dim = m.dim;
-    choice_.index = 0;
 }
 
 void MapBrowser::Open() {
@@ -266,23 +250,44 @@ void MapBrowser::Open() {
     choice_.name = GameStr(s + game::wc2r::kEntryName);
     choice_.path = GameStr(s + game::wc2r::kEntryPath);
     choice_.desc = GameStr(s + game::wc2r::kEntryDesc);
-    choice_.relDir = GameStr(b_.relPath);
     choice_.players = s[game::wc2r::kEntryPlayers];
     choice_.dim = *reinterpret_cast<const uint16_t*>(s + game::wc2r::kEntryDim);
     choice_.index = *reinterpret_cast<const uint32_t*>(s + game::wc2r::kEntryIndex);
+
 }
 
 uint8_t* MapBrowser::ResolveChoiceEntry() {
     if (!choice_.valid) return nullptr;
-    if (!choice_.builtIn && GameStr(b_.relPath) != choice_.relDir) {
-        SetFolder(choice_.relDir);
+    if (!choice_.builtIn) {
+        map_index::MapInfo m;
+        if (!choice_.folderKnown && map_index::FindByPath(choice_.path, &m)) {
+            choice_.folder = m.folder;
+            choice_.folderKnown = true;
+        }
+        std::string gamePath;
+        if (!choice_.folderKnown || !GameFolderPath(choice_.folder, &gamePath)) {
+            Logger{b_.logTag}.Warn("confirm: no game folder path for '%s'", choice_.path.c_str());
+            return nullptr;
+        }
+        if (GameStr(b_.relPath) != gamePath) SetGameFolder(gamePath);
     }
+
+    uint8_t* byName = nullptr;
+    int named = 0;
     for (const LiveEntry& le : LiveEntries()) {
         if (choice_.builtIn) {
             if (le.index == choice_.index && choice_.name == le.name) return le.entry;
-        } else if (choice_.name == le.name && choice_.path == le.path) {
+        } else if (_stricmp(choice_.path.c_str(), le.path) == 0) {
             return le.entry;
+        } else if (choice_.name == le.name) {
+            byName = le.entry;
+            ++named;
         }
+    }
+    if (named == 1) {
+        Logger{b_.logTag}.Warn("confirm: '%s' matched by name only -- the game lists it at another "
+                               "path", choice_.path.c_str());
+        return byName;
     }
     return nullptr;
 }
@@ -301,22 +306,12 @@ bool MapBrowser::PreviewBox(Rect* box, const char** path, unsigned short* mapId)
     return true;
 }
 
-std::string MapBrowser::DirectoryText() {
+std::string MapBrowser::DirectoryText() const {
     if (BuiltInMode()) return "";
-    const std::string rel = GameStr(b_.relPath);
-
     if (Searching()) return "Maps/";
-
     std::string shown = "Maps/";
-    if (mapsRootKnown_ && rel.size() > mapsRoot_.size()) {
-        std::string below = rel.substr(mapsRoot_.size());
-        for (size_t i = 0; i < below.size(); ++i) {
-            if (below[i] == '\\') below[i] = '/';
-        }
-        if (!below.empty() && below[0] == '/') below.erase(0, 1);
-        shown += below;
-        if (!shown.empty() && shown[shown.size() - 1] != '/') shown += '/';
-    }
+    for (const char c : folder_) shown.push_back(c == '\\' ? '/' : c);
+    if (!folder_.empty()) shown += '/';
     return shown;
 }
 
@@ -348,46 +343,52 @@ bool MapBrowser::ListRow(void* ctx, const char* label, bool folder) {
 }
 
 void MapBrowser::DrawList(void* ctx, const Rect& r) {
-    if (!BeginList(ctx, r, "select_map_list")) return;
-
-    const SizeFilter filter = CurrentSizeFilter(b_);
-
-    if (Searching()) {
-
-        if (BuiltInMode()) {
-
-            for (const LiveEntry& le : LiveEntries()) {
-                if (!PassesSizeFilter(filter, le.dim)) continue;
-                if (!ContainsNoCase(le.name, search_)) continue;
-                if (ListRow(ctx, le.name, false)) ChoiceFromLive(le);
-            }
-        } else {
-
-            for (const IndexedMap& m : index_) {
-                if (!PassesSizeFilter(filter, m.dim)) continue;
-                if (!ContainsNoCase(m.name.c_str(), search_)) continue;
-                if (ListRow(ctx, m.name.c_str(), false)) ChoiceFromIndex(m);
-            }
-        }
-        EndList(ctx);
+    const View view = CurrentView();
+    if (view == View::Progress) {
+        DrawIndexProgress(ctx, r);
         return;
     }
 
-    if (!BuiltInMode()) {
-        const std::vector<std::string> folders = FolderNames(b_.folderList, true);
-        for (size_t i = 0; i < folders.size(); ++i) {
-            if (ListRow(ctx, folders[i].c_str(), true)) {
-                DescendInto(folders[i]);
+    if (view == View::Browse) RefreshBrowse();
+    if (view == View::Search) RefreshSearch();
 
-                EndList(ctx);
-                return;
+    if (!BeginList(ctx, r, "select_map_list")) return;
+    const SizeFilter filter = CurrentSizeFilter(b_);
+
+    switch (view) {
+        case View::BuiltIn:
+
+            for (const LiveEntry& le : LiveEntries()) {
+                if (!PassesSizeFilter(filter, le.dim)) continue;
+                if (Searching() && !ContainsNoCase(le.name, search_)) continue;
+                if (ListRow(ctx, le.name, false)) ChoiceFromLive(le);
             }
-        }
-    }
+            break;
 
-    for (const LiveEntry& le : LiveEntries()) {
-        if (!PassesSizeFilter(filter, le.dim)) continue;
-        if (ListRow(ctx, le.name, false)) ChoiceFromLive(le);
+        case View::Search:
+
+            for (const map_index::MapInfo& m : results_) {
+                if (!PassesSizeFilter(filter, m.dim)) continue;
+                if (ListRow(ctx, m.name.c_str(), false)) ChoiceFromMap(m);
+            }
+            break;
+
+        case View::Browse: {
+
+            std::string into;
+            for (const std::string& f : browseFolders_) {
+                if (ListRow(ctx, f.c_str(), true) && into.empty()) into = f;
+            }
+            for (const map_index::MapInfo& m : browseMaps_) {
+                if (!PassesSizeFilter(filter, m.dim)) continue;
+                if (ListRow(ctx, m.name.c_str(), false)) ChoiceFromMap(m);
+            }
+            if (!into.empty()) DescendInto(into);
+            break;
+        }
+
+        case View::Progress:
+            break;
     }
     EndList(ctx);
 }
@@ -436,13 +437,14 @@ void MapBrowser::Draw(void* ctx, const Rect& window) {
 
     const float reloadW = kRowH;
     const Rect reloadBox{x0, dirY, reloadW, kRowH};
-    const bool reloadGreyed = BuiltInMode();
+    const bool reloadGreyed =
+        BuiltInMode() || map_index::GetState() == map_index::State::Indexing;
     if (ButtonAt(ctx, reloadBox, "", reloadGreyed)) ReloadMaps();
     DrawReloadIcon(ctx, reloadBox, reloadGreyed);
 
     const float dirX = x0 + reloadW + kGap;
     const float dirW = leftW - reloadW - upW - kGap * 2.0f;
-    const bool dirGreyed = BuiltInMode() || Searching();
+    const bool dirGreyed = CurrentView() != View::Browse;
     LockedBoxAt(ctx, Rect{dirX, dirY, dirW, kRowH}, DirectoryText().c_str(), "map_browser_path");
 
     const Rect upBox{x0 + leftW - upW, dirY, upW, kRowH};
@@ -452,7 +454,21 @@ void MapBrowser::Draw(void* ctx, const Rect& window) {
 
     const float listY = dirY + kRowH + kGap;
 
-    if (Searching() && !BuiltInMode()) BuildSearchIndex();
+    if (map_index::GetState() == map_index::State::Idle && !BuiltInMode()) {
+        map_download::game_map::ReloadMapIndex();
+    }
+
+    if (choice_.valid && !choice_.builtIn && !choice_.folderLookedUp &&
+        map_index::GetState() == map_index::State::Ready) {
+        choice_.folderLookedUp = true;
+        map_index::MapInfo m;
+        if (map_index::FindByPath(choice_.path, &m)) {
+            choice_.folder = m.folder;
+            choice_.folderKnown = true;
+            if (!folderSeeded_) folder_ = m.folder;
+        }
+        folderSeeded_ = true;
+    }
     DrawList(ctx, Rect{x0, listY, leftW, bodyBottom - listY});
 
     const float buttonsH = kRowH;

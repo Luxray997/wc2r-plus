@@ -128,6 +128,13 @@ void ModSettings::SetHidden(const char* key, bool hidden) {
     SettingsRegistry::Get().SetHidden(coreIndices_[i], hidden);
 }
 
+void ModSettings::SetActiveWhen(const char* key, const char* boolKey) {
+    const int i = IndexOf(key);
+    if (i < 0 || IndexOf(boolKey) < 0) return;
+    descs_[i].activeWhen = boolKey;
+    SettingsRegistry::Get().SetActiveWhen(coreIndices_[i], boolKey);
+}
+
 void ModSettings::SetOptions(const char* key, std::vector<std::string> options) {
     const int i = IndexOf(key);
     if (i < 0 || options.empty()) return;

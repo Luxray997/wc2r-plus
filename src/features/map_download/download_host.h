@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "features/map_download/outbox.h"
-#include "features/map_download/sha256.h"
+#include "core/sha256.h"
 #include "features/map_download/wire.h"
 
 namespace map_download {

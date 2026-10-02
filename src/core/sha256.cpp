@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
-#include "features/map_download/sha256.h"
+#include "core/sha256.h"
 
 #include <cstring>
 
-namespace map_download {
 namespace {
 
 constexpr uint32_t kK[64] = {
@@ -68,5 +67,3 @@ void Sha256(const uint8_t* data, size_t len, uint8_t out[kSha256Len]) {
         out[i * 4 + 3] = static_cast<uint8_t>(h[i]);
     }
 }
-
-}  // namespace map_download

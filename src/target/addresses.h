@@ -414,6 +414,9 @@ constexpr Fun<SelectBuiltInScenarioFn> kSelectBuiltInScenario{0x00527cc0};
 using ValidateMapFileFn = char(__cdecl*)(const char* path);
 constexpr Fun<ValidateMapFileFn> kValidateMapFile{0x004bbd70};
 
+using StdFsCodePageFn = unsigned(__stdcall*)();
+constexpr Fun<StdFsCodePageFn> kStdFsCodePage{0x007e7aca};
+
 constexpr Obj<uint8_t> kPendingGameSetup{0x0091af50};
 
 using DrawLobbyDropdownFn = char(__cdecl*)(const char* comboId, void* currentValue,

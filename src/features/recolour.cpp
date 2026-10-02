@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: MIT
-#include <cctype>
-#include <cstdlib>
 #include <cstring>
 #include <string>
 
 #include "core/log.h"
 #include "core/mod.h"
 #include "core/settings/mod_settings.h"
+#include "features/hex_colour.h"
 #include "features/team_colours.h"
 #include "target/addresses.h"
 
@@ -43,14 +42,6 @@ ModSettings g_settings{"recolour"};
 bool g_active = false;
 uint8_t g_rgb[3] = {};
 
-bool ParseHex(const std::string& s, unsigned* rgb) {
-    if (s.size() != 6) return false;
-    for (char c : s)
-        if (!std::isxdigit(static_cast<unsigned char>(c))) return false;
-    *rgb = static_cast<unsigned>(std::strtoul(s.c_str(), nullptr, 16));
-    return true;
-}
-
 void RebuildTarget() {
     g_active = false;
     const int choice = g_settings.GetInt(kKeyBlack);
@@ -58,10 +49,10 @@ void RebuildTarget() {
         const Choice& c = kChoices[choice - 1];
         const std::string hex = g_settings.GetString(c.key);
         unsigned rgb;
-        if (!ParseHex(hex, &rgb)) {
+        if (!hex_colour::Parse(hex, &rgb)) {
             kLog.Warn("%s \"%s\" is not six hex digits (e.g. %s) -- using %s", c.key, hex.c_str(),
                       c.defaultHex, c.defaultHex);
-            ParseHex(c.defaultHex, &rgb);
+            hex_colour::Parse(c.defaultHex, &rgb);
         }
         g_rgb[0] = static_cast<uint8_t>((rgb >> 16) & 0xff);
         g_rgb[1] = static_cast<uint8_t>((rgb >> 8) & 0xff);

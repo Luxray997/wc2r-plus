@@ -590,6 +590,11 @@ void DrawTooltip(void* ctx, float uiW) {
 }
 
 bool RowIsInactive(const SettingDef& d, SettingsRegistry& core) {
+    if (!d.activeWhen.empty()) {
+
+        const int on = core.Find(d.owner.c_str(), d.activeWhen.c_str());
+        return on >= 0 && core.GetNum(on) == 0.0;
+    }
     if (d.owner != "game") return false;
     if (_stricmp(d.key.c_str(), "ui_scale_fixed") == 0) {
 
