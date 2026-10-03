@@ -18,7 +18,7 @@ std::wstring CacheFile();
 
 bool ReloadMapIndex();
 
-bool ReadFileBounded(const char* path, size_t limit, std::string* out);
+bool ReadFileBounded(const std::string& gamePath, size_t limit, std::string* out);
 
 bool SelectByPath(const std::string& gamePath);
 

@@ -97,8 +97,10 @@ bool ReloadMapIndex() {
     return true;
 }
 
-bool ReadFileBounded(const char* path, size_t limit, std::string* out) {
-    HANDLE h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+bool ReadFileBounded(const std::string& gamePath, size_t limit, std::string* out) {
+    std::wstring wide;
+    if (!map_index::FromGamePath(gamePath, &wide)) return false;
+    HANDLE h = CreateFileW(wide.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
                            FILE_ATTRIBUTE_NORMAL, nullptr);
     if (h == INVALID_HANDLE_VALUE) return false;
     LARGE_INTEGER sz;
@@ -117,7 +119,7 @@ bool ReadFileBounded(const char* path, size_t limit, std::string* out) {
 bool SelectByPath(const std::string& gamePath) {
     if (gamePath.empty() || gamePath.size() >= game::wc2r::kMaxGamePath) return false;
     std::string bytes;
-    if (!ReadFileBounded(gamePath.c_str(), 4u * 1024 * 1024, &bytes)) return false;
+    if (!ReadFileBounded(gamePath, 4u * 1024 * 1024, &bytes)) return false;
     if (!game::kScanPudMetadataFromBuffer.Get()(
             reinterpret_cast<const unsigned char*>(bytes.data()),
             static_cast<unsigned>(bytes.size()))) {
