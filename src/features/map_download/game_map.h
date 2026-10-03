@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <string>
 
-#include "features/map_download/sha256.h"
+#include "core/sha256.h"
 
 namespace map_download {
 namespace game_map {
@@ -16,7 +16,9 @@ std::string SelectedMapPath();
 std::wstring MapsRoot();
 std::wstring CacheFile();
 
-bool ReadFileBounded(const char* path, size_t limit, std::string* out);
+bool ReloadMapIndex();
+
+bool ReadFileBounded(const std::string& gamePath, size_t limit, std::string* out);
 
 bool SelectByPath(const std::string& gamePath);
 

@@ -260,8 +260,6 @@ char __cdecl HookedLobbyCreationContent() {
         g_browser.Close();
     }
 
-    g_browser.ObserveMapsRoot();
-
     static bool announced = false;
     if (!announced) {
         announced = true;

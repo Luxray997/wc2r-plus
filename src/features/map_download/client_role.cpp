@@ -14,10 +14,10 @@
 #include "features/map_download/download_client.h"
 #include "features/map_download/game_map.h"
 #include "features/map_download/limits.h"
-#include "features/map_download/map_index.h"
+#include "core/map_index.h"
 #include "features/map_download/map_store.h"
 #include "features/map_download/outbox_send.h"
-#include "features/map_download/sha256.h"
+#include "core/sha256.h"
 #include "features/peer_handshake.h"
 #include "features/ui/game_list_message.h"
 #include "target/addresses.h"
@@ -154,7 +154,10 @@ void DecideOffer(DWORD now, bool ask) {
             }
         }
 
-        if (!map_index::Ready() && now - g_client.offeredAtMs() < kIndexWaitMs) return;
+        if (map_index::GetState() != map_index::State::Ready &&
+            now - g_client.offeredAtMs() < kIndexWaitMs) {
+            return;
+        }
         std::string local;
         if (map_index::FindBySha(sha, &local) && game_map::FileHasSha(local, sha) &&
             SelectAndClearMiss(local)) {
@@ -196,12 +199,12 @@ void StoreCompleted() {
     const StoreResult r = StoreMap(g_client.name(), g_client.bytes().data(),
                                    g_client.bytes().size(), g_client.sha(), &dir, &full);
     std::string gamePath;
-    ToGamePath(full, &gamePath);
+    map_index::ToGamePath(full, &gamePath);
     kLog.Info("download of '%s' complete (%zu bytes), store=%d at '%.160s' (err %lu)",
               g_client.name().c_str(), g_client.bytes().size(), static_cast<int>(r),
               gamePath.c_str(), r == StoreResult::WriteFailed ? GetLastError() : 0ul);
     if (r == StoreResult::Ok || r == StoreResult::AlreadyPresent) {
-        map_index::Add(full, g_client.sha());
+        map_index::Add(full);
         game_map::RegisterDirectory(dir);
         const bool ok = SelectAndClearMiss(gamePath);
         kLog.Info("selected the downloaded '%s' by path -- %s", g_client.name().c_str(),

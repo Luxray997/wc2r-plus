@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <string>
 
-#include "features/map_download/sha256.h"
+#include "core/sha256.h"
 
 namespace map_download {
 

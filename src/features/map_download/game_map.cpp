@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #include "features/map_download/game_map.h"
 
+#include "core/log.h"
+#include "core/map_index.h"
 #include "core/paths.h"
 
 #include <windows.h>
@@ -12,7 +14,6 @@
 #include <cstring>
 
 #include "features/map_download/limits.h"
-#include "features/map_download/map_index.h"
 #include "features/map_download/map_store.h"
 #include "target/addresses.h"
 #include "target/struct_offsets.h"
@@ -71,16 +72,35 @@ std::wstring MapsRoot() {
     while (n < game::wc2r::kMaxGamePath && base[n]) ++n;
     if (n == 0 || n >= game::wc2r::kMaxGamePath) return std::wstring();
     std::wstring wide;
-    if (!FromGamePath(std::string(base, n), &wide)) return std::wstring();
+    if (!map_index::FromGamePath(std::string(base, n), &wide)) return std::wstring();
 
     if (wide.back() != L'\\' && wide.back() != L'/') wide.push_back(L'\\');
     return wide + L"Maps";
 }
 
-std::wstring CacheFile() { return paths::Resources(L"map_hashes.txt"); }
+std::wstring CacheFile() { return paths::Resources(L"map_index.txt"); }
 
-bool ReadFileBounded(const char* path, size_t limit, std::string* out) {
-    HANDLE h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+namespace {
+
+void LogIndexBuilt(const map_index::BuildReport& r) {
+    Logger{"mapindex"}.Info("ready -- %u maps in %u folders, %u files read (the rest cached), %u ms%s",
+                            r.maps, r.folders, r.filesRead, r.ms, r.capped ? " (CAPPED)" : "");
+}
+
+}  // namespace
+
+bool ReloadMapIndex() {
+    const std::wstring root = MapsRoot();
+    if (root.empty()) return false;
+    map_index::SetBuildListener(&LogIndexBuilt);
+    map_index::Reload(root, CacheFile());
+    return true;
+}
+
+bool ReadFileBounded(const std::string& gamePath, size_t limit, std::string* out) {
+    std::wstring wide;
+    if (!map_index::FromGamePath(gamePath, &wide)) return false;
+    HANDLE h = CreateFileW(wide.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
                            FILE_ATTRIBUTE_NORMAL, nullptr);
     if (h == INVALID_HANDLE_VALUE) return false;
     LARGE_INTEGER sz;
@@ -99,7 +119,7 @@ bool ReadFileBounded(const char* path, size_t limit, std::string* out) {
 bool SelectByPath(const std::string& gamePath) {
     if (gamePath.empty() || gamePath.size() >= game::wc2r::kMaxGamePath) return false;
     std::string bytes;
-    if (!ReadFileBounded(gamePath.c_str(), 4u * 1024 * 1024, &bytes)) return false;
+    if (!ReadFileBounded(gamePath, 4u * 1024 * 1024, &bytes)) return false;
     if (!game::kScanPudMetadataFromBuffer.Get()(
             reinterpret_cast<const unsigned char*>(bytes.data()),
             static_cast<unsigned>(bytes.size()))) {
@@ -114,7 +134,7 @@ bool SelectByPath(const std::string& gamePath) {
 bool FileHasSha(const std::string& gamePath, const uint8_t sha[kSha256Len]) {
     std::wstring wide;
     uint8_t digest[kSha256Len];
-    return FromGamePath(gamePath, &wide) && HashFile(wide, digest) &&
+    return map_index::FromGamePath(gamePath, &wide) && map_index::HashFile(wide, digest) &&
            memcmp(digest, sha, kSha256Len) == 0;
 }
 
@@ -134,7 +154,7 @@ void RegisterDirectory(const std::wstring& dir) {
 
 ServeRead ReadServableFile(const std::string& path, std::string* out, std::wstring* finalPath) {
     std::wstring wide;
-    if (!FromGamePath(path, &wide)) return ServeRead::Unreadable;
+    if (!map_index::FromGamePath(path, &wide)) return ServeRead::Unreadable;
     HANDLE h = CreateFileW(wide.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
                            FILE_ATTRIBUTE_NORMAL, nullptr);
     if (h == INVALID_HANDLE_VALUE) return ServeRead::Unreadable;

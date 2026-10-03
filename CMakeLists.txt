@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(wc2r_plus VERSION 1.0.0 LANGUAGES C CXX)
+project(wc2r_plus VERSION 1.1.0 LANGUAGES C CXX)
 
 if(NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
     message(FATAL_ERROR "wc2r-plus must be built for 32-bit Windows (Warcraft II Remastered is x86): "

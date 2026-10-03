@@ -9,7 +9,7 @@ Players with and without the mod can still play together.
 - **Chat**
   - Scrollable history
   - Visible while paused
-  - Color coded channels: `[Team]`, `[All]` and `[Allies]` (cycle with `Tab`)
+  - Customizable & color-coded channels: `[Team]`, `[All]` and `[Allies]` (cycle with `Tab`)
   - Colored usernames matching player color
   - Timestamps
 - **Revamped UIs and Screens**
@@ -33,6 +33,8 @@ The main menu shows "WarCraft 2 Remastered+ Version …" when the mod is running
 The mod is built for **WC2 Remastered version 1.0.2.2818**. The mod will not load on any other version and will leave the game vanilla. If a new version of WC2 Remastered is released, the mod will remain inactive until the mod is updated.
 
 ## Install
+
+⚠️ Although no bans have been observed, this mod is not official and may be flagged by Blizzard's anti-cheat. Proceed at your own risk.
 
 1. Download **`wc2r-plus-setup-<version>.exe`** from the [latest release](../../releases/latest) and run it
 2. Select your WC2 Remastered installation location. If it is in `C:\Program Files (x86)` or `C:\Program Files`, it will be automatically detected.

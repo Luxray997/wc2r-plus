@@ -2,11 +2,13 @@ add_library(version_proxy SHARED
     core/build_guard.cpp
     core/hooks.cpp
     core/log.cpp
+    core/map_index.cpp
     core/match_start.cpp
     core/mod.cpp
     core/named_window_hook.cpp
     core/paths.cpp
     core/peer_messages.cpp
+    core/sha256.cpp
     core/settings/mod_settings.cpp
     core/settings/native_settings_bridge.cpp
     core/settings/native_settings_catalog.cpp
@@ -26,11 +28,9 @@ add_library(version_proxy SHARED
     features/map_download/pud_validator.cpp
     features/map_download/map_name.cpp
     features/map_download/wire.cpp
-    features/map_download/sha256.cpp
     features/map_download/download_client.cpp
     features/map_download/download_host.cpp
     features/map_download/map_store.cpp
-    features/map_download/map_index.cpp
     features/net_watch.cpp
     features/peer_handshake.cpp
     features/recolour.cpp
@@ -43,7 +43,6 @@ add_library(version_proxy SHARED
     features/ui/lobby_chat.cpp
     features/ui/main_menu_version.cpp
     features/ui/map_browser.cpp
-    features/ui/map_search_cache.cpp
     features/ui/map_panel.cpp
     features/ui/game_list_message.cpp
     features/ui/multiplayer_lobby_screen.cpp

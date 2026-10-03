@@ -19,6 +19,7 @@
 #include "core/paths.h"
 #include "core/mod.h"
 #include "core/settings/mod_settings.h"
+#include "features/hex_colour.h"
 #include "features/lobby_teams.h"
 #include "features/team_colours.h"
 #include "target/addresses.h"
@@ -91,14 +92,7 @@ enum class Channel : uint8_t {
 };
 
 constexpr uint32_t kTextGrey = Rgba(0x92, 0x92, 0x92);
-constexpr uint32_t kChannelColours[static_cast<int>(Channel::Count)] = {
-    kHighlightColor,
-    kTextGrey,
-    Rgba(0x25, 0xe6, 0x5f),
-    Rgba(0x69, 0xa7, 0xff),
-    kTextGrey,
-    kTextGrey,
-};
+constexpr uint32_t kSystemColour = kHighlightColor;
 constexpr const char* kChannelLabels[static_cast<int>(Channel::Count)] = {
     "", "[All]", "[Team]", "[Allies]", "[Enemies]", "[Private]",
 };
@@ -136,6 +130,10 @@ constexpr const char* kKeyNameColours = "name_colours";
 
 constexpr const char* kKeyChannels = "channels";
 
+constexpr const char* kKeyTeamHex = "team_hex";
+constexpr const char* kKeyAllHex = "all_hex";
+constexpr const char* kKeyAlliesHex = "allies_hex";
+
 constexpr bool kAnchorBottom = true;
 
 constexpr float kIndicatorWidth = 4.0f;
@@ -154,6 +152,24 @@ constexpr bool kDefaultLog = false;
 constexpr int kDefaultBgAlpha = 100;
 constexpr bool kDefaultNameColours = true;
 constexpr bool kDefaultChannels = true;
+
+struct ChannelColourSetting {
+    Channel channel;
+    const char* key;
+    const char* label;
+    const char* description;
+    const char* defaultHex;
+};
+constexpr ChannelColourSetting kChannelColourSettings[] = {
+    {Channel::Team, kKeyTeamHex, "[Team] Color", "The hex color code to use for the Team channel.",
+     "25e65f"},
+    {Channel::All, kKeyAllHex, "[All] Color", "The hex color code to use for the All channel.",
+     "929292"},
+    {Channel::Allies, kKeyAlliesHex, "[Allies] Color",
+     "The hex color code to use for the Allies channel.", "69a7ff"},
+};
+constexpr size_t kChannelColourSettingCount =
+    sizeof(kChannelColourSettings) / sizeof(kChannelColourSettings[0]);
 
 void RegisterChatSettings() {
     g_settings.BeginGroup("Chat", "Behavior");
@@ -189,11 +205,55 @@ void RegisterChatSettings() {
                              "Enter opens [Team], ctrl + Enter opens [Allies], and shift + Enter "
                              "opens [All]. [All] will be opened instead of opening an empty "
                              "channel.");
+    for (const ChannelColourSetting& s : kChannelColourSettings) {
+        g_settings.RegisterString(s.key, s.defaultHex, s.label, s.description);
+        g_settings.SetActiveWhen(s.key, kKeyChannels);
+    }
 }
 
 bool ChannelsOn() {
     return g_settings.GetBool(kKeyEnabled) && g_settings.GetBool(kKeyChannels);
 }
+
+uint32_t ChannelSettingColour(const ChannelColourSetting& s) {
+    unsigned rgb;
+    if (!hex_colour::Parse(g_settings.GetString(s.key), &rgb)) hex_colour::Parse(s.defaultHex, &rgb);
+    return Rgba((rgb >> 16) & 0xff, (rgb >> 8) & 0xff, rgb & 0xff);
+}
+
+void WarnBadChannelColours() {
+    static std::string reported[kChannelColourSettingCount];
+    for (size_t i = 0; i < kChannelColourSettingCount; ++i) {
+        const ChannelColourSetting& s = kChannelColourSettings[i];
+        const std::string hex = g_settings.GetString(s.key);
+        unsigned rgb;
+        if (hex_colour::Parse(hex, &rgb) || hex == reported[i]) continue;
+        reported[i] = hex;
+        kLog.Warn("%s \"%s\" is not six hex digits (e.g. %s) -- using %s", s.key, hex.c_str(),
+                  s.defaultHex, s.defaultHex);
+    }
+}
+
+struct LinePalette {
+    uint32_t channel[static_cast<int>(Channel::Count)];
+
+    explicit LinePalette(void* ctx) {
+        for (uint32_t& c : channel) c = kTextGrey;
+        channel[static_cast<int>(Channel::System)] = kSystemColour;
+        if (ChannelsOn()) {
+            for (const ChannelColourSetting& s : kChannelColourSettings)
+                channel[static_cast<int>(s.channel)] = ChannelSettingColour(s);
+        } else {
+
+            uint32_t white;
+            memcpy(&white, static_cast<const uint8_t*>(ctx) + nk::kCtxTextColour, 4);
+            for (int c = 0; c < static_cast<int>(Channel::Count); ++c)
+                if (c != static_cast<int>(Channel::System)) channel[c] = white;
+        }
+    }
+
+    uint32_t Of(Channel c) const { return channel[static_cast<int>(c)]; }
+};
 
 struct NameSpan {
     size_t start;
@@ -560,12 +620,12 @@ void DrawBacklogRows(void* ctx, float w, float lineHeight) {
     {
         Guard g;
         const bool nameColours = g_settings.GetBool(kKeyNameColours);
+        const LinePalette palette(ctx);
         for (const Message& m : g_backlog) {
             int n = g_countWrappedLines(ctx, m.text.c_str(), (int)m.text.size(), w);
             if (n < 1) n = 1;
             g_layoutRowDynamic(ctx, (float)n * lineHeight, 1);
-            const uint32_t colour =
-                m.highlight ? kHighlightColor : kChannelColours[static_cast<int>(m.channel)];
+            const uint32_t colour = m.highlight ? kHighlightColor : palette.Of(m.channel);
             if (nameColours && !m.names.empty()) {
                 DrawNamedLine(ctx, m, colour);
             } else {
@@ -632,6 +692,7 @@ void DrawRecentLines(void* ctx, int lineHeight) {
     const bool nameColours = g_settings.GetBool(kKeyNameColours);
     const int bgAlpha = g_settings.GetInt(kKeyBgAlpha);
     const int maxLines = static_cast<int>(h) / lineHeight;
+    const LinePalette palette(ctx);
 
     Guard g;
     int used = 0;
@@ -648,9 +709,7 @@ void DrawRecentLines(void* ctx, int lineHeight) {
         look.names = nameColours;
         look.alpha = alpha;
         look.band = Rgba(0, 0, 0, static_cast<int>(static_cast<float>(bgAlpha) * alpha));
-        DrawNamedLine(ctx, *it,
-                      it->highlight ? kHighlightColor : kChannelColours[static_cast<int>(it->channel)],
-                      look);
+        DrawNamedLine(ctx, *it, it->highlight ? kHighlightColor : palette.Of(it->channel), look);
     }
 }
 
@@ -669,8 +728,7 @@ void __cdecl HookedDrawMapMessageList(void* ctx, int lineHeight) {
     const char* prompt = reinterpret_cast<const char*>(Slot(kSlotPrompt));
     int used = g_promptChannel != Channel::System
                    ? DrawLineInColour(ctx, prompt, 0.0f, 0.0f, w, h,
-                                      kChannelColours[static_cast<int>(g_promptChannel)], 0,
-                                      lineHeight)
+                                      LinePalette(ctx).Of(g_promptChannel), 0, lineHeight)
                    : g_drawMapMessageLine(ctx, prompt, 0.0f, 0.0f, w, h,
                                           Slot(kSlotPrompt)[wc2r::kMessageSlotHighlight], 0,
                                           lineHeight);
@@ -943,7 +1001,7 @@ void OnMatchStart() {
 void __cdecl HookedBuildMapMessagesPanel(void* ctx, float x, float y, float w, float h,
                                          int lineHeight) {
 
-    g_settings.ReloadIfChanged();
+    if (g_settings.ReloadIfChanged()) WarnBadChannelColours();
 
     if (!g_settings.GetBool(kKeyEnabled) || !ctx || lineHeight <= 0) {
         g_realBuildMapMessagesPanel(ctx, x, y, w, h, lineHeight);
@@ -1060,7 +1118,7 @@ public:
         g_textClamp = kNkTextClamp.Get();
         g_widgetText = kNkWidgetText.Get();
 
-        g_settings.ReloadIfChanged();
+        if (g_settings.ReloadIfChanged()) WarnBadChannelColours();
 
         InstallHook(kPushMapMessage.Target(), reinterpret_cast<void*>(&HookedPushMapMessage),
                     reinterpret_cast<void**>(&g_realPushMapMessage), "PushMapMessage");

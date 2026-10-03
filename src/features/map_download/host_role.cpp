@@ -7,10 +7,10 @@
 #include "core/log.h"
 #include "features/map_download/download_host.h"
 #include "features/map_download/game_map.h"
-#include "features/map_download/map_index.h"
+#include "core/map_index.h"
 #include "features/map_download/outbox_send.h"
 #include "features/map_download/pud_validator.h"
-#include "features/map_download/sha256.h"
+#include "core/sha256.h"
 #include "features/peer_handshake.h"
 #include "target/addresses.h"
 
@@ -79,7 +79,7 @@ void UpdateServableMap() {
                      : game_map::ReadServableFile(path, &bytes, &finalPath);
     if (read != game_map::ServeRead::Ok) {
         std::string finalNarrow;
-        ToGamePath(finalPath, &finalNarrow);
+        map_index::ToGamePath(finalPath, &finalNarrow);
         if (read == game_map::ServeRead::OutsideMaps) {
             kLog.Info("selected map '%s' resolves to '%.200s', outside the game's Maps folders -- "
                       "not serving", name.c_str(), finalNarrow.c_str());

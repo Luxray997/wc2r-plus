@@ -37,6 +37,8 @@ struct SettingDef {
 
     bool hidden = false;
 
+    std::string activeWhen;
+
     const NativeSettingEntry* nativeEntry = nullptr;
 
     int (*derivedGet)() = nullptr;
@@ -66,6 +68,7 @@ public:
     void ResetToDefault(int index);
 
     void SetHidden(int index, bool hidden);
+    void SetActiveWhen(int index, const char* boolKey);
 
     void SetOptions(int index, std::vector<std::string> options);
 

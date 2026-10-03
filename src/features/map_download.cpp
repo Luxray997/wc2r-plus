@@ -17,7 +17,7 @@
 #include "features/map_download/client_role.h"
 #include "features/map_download/game_map.h"
 #include "features/map_download/host_role.h"
-#include "features/map_download/map_index.h"
+#include "core/map_index.h"
 #include "features/map_download/map_store.h"
 #include "features/map_download/wire.h"
 #include "features/peer_handshake.h"
@@ -83,9 +83,9 @@ void StartIndexOnce() {
     if (maps.empty()) return;
     done = true;
     SetDownloadRoot(maps + L"\\Download");
-    map_index::StartBuild(maps, game_map::CacheFile());
+    if (map_index::GetState() == map_index::State::Idle) game_map::ReloadMapIndex();
     std::string narrow;
-    ToGamePath(maps, &narrow);
+    map_index::ToGamePath(maps, &narrow);
     kLog.Info("indexing maps under '%.200s' (downloads go to Download\\V<n>)", narrow.c_str());
 }
 
@@ -190,14 +190,6 @@ named_window::Result OnMultiplayerLobbyWindow(void*) {
     g_lastSeen = now;
     if (freshLobby) ResetLobby();
     StartIndexOnce();
-    if (map_index::Ready()) {
-        static bool logged = false;
-        if (!logged) {
-            logged = true;
-            kLog.Info("hash index ready -- %zu maps (%zu hashed, the rest from cache)",
-                      map_index::Count(), map_index::HashedLastBuild());
-        }
-    }
     if (!peer_messages::SessionConnected()) return named_window::Result::Continue;
     handshake::SetLocalMapDownload(Enabled());
 
